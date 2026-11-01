@@ -1,0 +1,343 @@
+<!DOCTYPE html>
+<html lang="fa" dir="rtl">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Viewzy</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script src="https://cdn.socket.io/4.8.0/socket.io.min.js"></script>
+  <script>
+    tailwind.config = {
+      theme: {
+        extend: {
+          colors: {
+            primary: { 500: '#6366f1', 600: '#4f46e5', 700: '#4338ca' },
+            dark: { 800: '#1e1e2e', 900: '#11111b', 950: '#0a0a12' }
+          }
+        }
+      }
+    }
+  </script>
+  <style>
+    @import url('https://fonts.googleapis.com/css2?family=Vazirmatn:wght@300;400;500;600;700&display=swap');
+    body { font-family: 'Vazirmatn', system-ui, sans-serif; }
+    .card { @apply bg-dark-800/80 backdrop-blur border border-white/5 rounded-2xl; }
+    .btn { @apply px-4 py-2 rounded-xl font-medium transition active:scale-95; }
+    .btn-primary { @apply bg-primary-600 hover:bg-primary-500 text-white; }
+    .btn-danger { @apply bg-rose-600 hover:bg-rose-500 text-white; }
+    .btn-ghost { @apply bg-white/5 hover:bg-white/10 text-white; }
+    .input { @apply w-full bg-dark-900 border border-white/10 rounded-xl px-4 py-2.5 text-white placeholder-white/30 focus:outline-none focus:border-primary-500; }
+    .badge { @apply text-xs px-2 py-0.5 rounded-full font-medium; }
+  </style>
+</head>
+<body class="bg-dark-950 text-white min-h-screen">
+  <!-- Header -->
+  <header class="border-b border-white/5 bg-dark-900/50 backdrop-blur sticky top-0 z-50">
+    <div class="max-w-7xl mx-auto px-4 py-4 flex items-center justify-between">
+      <div class="flex items-center gap-3">
+        <div class="w-10 h-10 rounded-xl bg-gradient-to-br from-primary-500 to-violet-600 flex items-center justify-center text-xl font-bold">V</div>
+        <div>
+          <h1 class="text-lg font-bold">Viewzy</h1>
+          <p class="text-xs text-white/40">Live Stream Load Testing</p>
+        </div>
+      </div>
+      <div class="flex items-center gap-3 text-sm">
+        <span id="proxyCount" class="badge bg-emerald-500/20 text-emerald-400">پروکسی: —</span>
+        <span id="activeTests" class="badge bg-primary-500/20 text-primary-400">تست فعال: 0</span>
+      </div>
+    </div>
+  </header>
+
+  <main class="max-w-7xl mx-auto px-4 py-6 grid grid-cols-1 lg:grid-cols-3 gap-6">
+    <!-- Left: Targets + Start -->
+    <div class="lg:col-span-1 space-y-6">
+      <!-- Add Target -->
+      <section class="card p-5">
+        <h2 class="font-semibold mb-4 flex items-center gap-2">
+          <span class="w-2 h-2 rounded-full bg-primary-500"></span>
+          افزودن لایو جدید
+        </h2>
+        <form id="targetForm" class="space-y-3">
+          <input type="text" id="targetName" class="input" placeholder="نام لایو (مثلاً استریم ۱)" required />
+          <input type="url" id="targetUrl" class="input" placeholder="https://your-site.com/live/xxx" required />
+          <div class="grid grid-cols-2 gap-3">
+            <div>
+              <label class="text-xs text-white/50 mb-1 block">سشن همزمان پیش‌فرض</label>
+              <input type="number" id="targetConcurrent" class="input" value="10" min="1" max="80" />
+            </div>
+            <div>
+              <label class="text-xs text-white/50 mb-1 block">مدت (ثانیه)</label>
+              <input type="number" id="targetDuration" class="input" value="300" min="30" max="3600" />
+            </div>
+          </div>
+          <button type="submit" class="btn btn-primary w-full">افزودن لایو</button>
+        </form>
+      </section>
+
+      <!-- Targets List -->
+      <section class="card p-5">
+        <div class="flex items-center justify-between mb-4">
+          <h2 class="font-semibold">لایوهای تعریف‌شده</h2>
+          <button onclick="loadTargets()" class="btn btn-ghost text-xs">بروزرسانی</button>
+        </div>
+        <div id="targetsList" class="space-y-3 max-h-96 overflow-y-auto">
+          <p class="text-white/30 text-sm text-center py-6">هنوز لایوی اضافه نشده</p>
+        </div>
+      </section>
+
+      <!-- Proxy Control -->
+      <section class="card p-5">
+        <h2 class="font-semibold mb-3">مدیریت پروکسی</h2>
+        <p class="text-sm text-white/50 mb-4">پروکسی‌های رایگان به‌صورت خودکار هر ۱۰ دقیقه به‌روز می‌شوند.</p>
+        <button onclick="refreshProxies()" class="btn btn-ghost w-full" id="refreshProxyBtn">
+          پیدا کردن پروکسی‌های جدید
+        </button>
+        <p id="proxyLast" class="text-xs text-white/30 mt-3 text-center"></p>
+      </section>
+    </div>
+
+    <!-- Right: Monitoring -->
+    <div class="lg:col-span-2 space-y-6">
+      <!-- Global Stats -->
+      <div class="grid grid-cols-2 md:grid-cols-4 gap-4">
+        <div class="card p-4">
+          <p class="text-xs text-white/40">سشن‌های شروع‌شده</p>
+          <p id="statStarted" class="text-2xl font-bold mt-1">0</p>
+        </div>
+        <div class="card p-4">
+          <p class="text-xs text-white/40">موفق</p>
+          <p id="statSuccess" class="text-2xl font-bold mt-1 text-emerald-400">0</p>
+        </div>
+        <div class="card p-4">
+          <p class="text-xs text-white/40">ناموفق</p>
+          <p id="statFail" class="text-2xl font-bold mt-1 text-rose-400">0</p>
+        </div>
+        <div class="card p-4">
+          <p class="text-xs text-white/40">تست‌های فعال</p>
+          <p id="statActive" class="text-2xl font-bold mt-1 text-primary-400">0</p>
+        </div>
+      </div>
+
+      <!-- Active Tests -->
+      <section class="card p-5">
+        <div class="flex items-center justify-between mb-4">
+          <h2 class="font-semibold">مانیتورینگ تست‌ها</h2>
+          <button onclick="stopAllTests()" class="btn btn-danger text-sm">توقف همه</button>
+        </div>
+        <div id="testsList" class="space-y-4">
+          <p class="text-white/30 text-sm text-center py-10">هیچ تستی در حال اجرا نیست</p>
+        </div>
+      </section>
+
+      <!-- Quick Start Modal-like -->
+      <div id="startModal" class="hidden fixed inset-0 bg-black/70 backdrop-blur z-50 flex items-center justify-center p-4">
+        <div class="card p-6 w-full max-w-md">
+          <h3 class="font-bold text-lg mb-4">شروع تست فشار</h3>
+          <p id="modalTargetName" class="text-white/60 text-sm mb-4"></p>
+          <div class="space-y-3">
+            <div>
+              <label class="text-xs text-white/50 mb-1 block">تعداد سشن همزمان</label>
+              <input type="number" id="modalConcurrent" class="input" value="10" min="1" max="80" />
+            </div>
+            <div>
+              <label class="text-xs text-white/50 mb-1 block">مدت هر سشن (ثانیه)</label>
+              <input type="number" id="modalDuration" class="input" value="300" min="30" max="3600" />
+            </div>
+          </div>
+          <div class="flex gap-3 mt-6">
+            <button onclick="confirmStart()" class="btn btn-primary flex-1">شروع</button>
+            <button onclick="closeModal()" class="btn btn-ghost flex-1">انصراف</button>
+          </div>
+        </div>
+      </div>
+    </div>
+  </main>
+
+  <script>
+    const socket = io();
+    let targets = [];
+    let currentTargetId = null;
+
+    // Socket live updates
+    socket.on('status', (data) => {
+      updateMonitoring(data);
+    });
+    socket.on('proxies_updated', (data) => {
+      document.getElementById('proxyCount').textContent = `پروکسی: ${data.total}`;
+      document.getElementById('proxyLast').textContent = `آخرین به‌روزرسانی: ${new Date(data.lastRefresh).toLocaleTimeString('fa-IR')}`;
+    });
+
+    async function loadTargets() {
+      const res = await fetch('/api/targets');
+      targets = await res.json();
+      renderTargets();
+    }
+
+    function renderTargets() {
+      const el = document.getElementById('targetsList');
+      if (!targets.length) {
+        el.innerHTML = '<p class="text-white/30 text-sm text-center py-6">هنوز لایوی اضافه نشده</p>';
+        return;
+      }
+      el.innerHTML = targets.map(t => `
+        <div class="bg-dark-900/60 rounded-xl p-4 border border-white/5">
+          <div class="flex items-start justify-between gap-2">
+            <div class="min-w-0">
+              <h3 class="font-medium truncate">${escapeHtml(t.name)}</h3>
+              <p class="text-xs text-white/40 truncate mt-0.5">${escapeHtml(t.url)}</p>
+              <p class="text-xs text-white/30 mt-1">پیش‌فرض: ${t.defaultConcurrent} سشن · ${t.defaultDurationSec}ث</p>
+            </div>
+            <div class="flex flex-col gap-1.5 shrink-0">
+              <button onclick="openStartModal('${t.id}')" class="btn btn-primary text-xs py-1.5">شروع تست</button>
+              <button onclick="deleteTarget('${t.id}')" class="btn btn-ghost text-xs py-1.5 text-rose-400">حذف</button>
+            </div>
+          </div>
+        </div>
+      `).join('');
+    }
+
+    document.getElementById('targetForm').addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const body = {
+        name: document.getElementById('targetName').value.trim(),
+        url: document.getElementById('targetUrl').value.trim(),
+        defaultConcurrent: Number(document.getElementById('targetConcurrent').value),
+        defaultDurationSec: Number(document.getElementById('targetDuration').value)
+      };
+      const res = await fetch('/api/targets', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body)
+      });
+      if (res.ok) {
+        e.target.reset();
+        document.getElementById('targetConcurrent').value = 10;
+        document.getElementById('targetDuration').value = 300;
+        loadTargets();
+      } else {
+        alert('خطا در افزودن');
+      }
+    });
+
+    async function deleteTarget(id) {
+      if (!confirm('حذف این لایو؟')) return;
+      await fetch(`/api/targets/${id}`, { method: 'DELETE' });
+      loadTargets();
+    }
+
+    function openStartModal(id) {
+      const t = targets.find(x => x.id === id);
+      if (!t) return;
+      currentTargetId = id;
+      document.getElementById('modalTargetName').textContent = t.name + ' — ' + t.url;
+      document.getElementById('modalConcurrent').value = t.defaultConcurrent || 10;
+      document.getElementById('modalDuration').value = t.defaultDurationSec || 300;
+      document.getElementById('startModal').classList.remove('hidden');
+    }
+
+    function closeModal() {
+      document.getElementById('startModal').classList.add('hidden');
+      currentTargetId = null;
+    }
+
+    async function confirmStart() {
+      if (!currentTargetId) return;
+      const concurrent = Number(document.getElementById('modalConcurrent').value);
+      const durationSec = Number(document.getElementById('modalDuration').value);
+      const res = await fetch('/api/tests/start', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ targetId: currentTargetId, concurrent, durationSec })
+      });
+      if (res.ok) {
+        closeModal();
+      } else {
+        const err = await res.json();
+        alert(err.error || 'خطا');
+      }
+    }
+
+    async function stopTest(id) {
+      await fetch(`/api/tests/stop/${id}`, { method: 'POST' });
+    }
+
+    async function stopAllTests() {
+      if (!confirm('همه تست‌ها متوقف شوند؟')) return;
+      await fetch('/api/tests/stop-all', { method: 'POST' });
+    }
+
+    async function refreshProxies() {
+      const btn = document.getElementById('refreshProxyBtn');
+      btn.disabled = true;
+      btn.textContent = 'در حال جستجو...';
+      await fetch('/api/proxies/refresh', { method: 'POST' });
+      setTimeout(() => {
+        btn.disabled = false;
+        btn.textContent = 'پیدا کردن پروکسی‌های جدید';
+        loadProxyStats();
+      }, 4000);
+    }
+
+    async function loadProxyStats() {
+      const res = await fetch('/api/proxies/stats');
+      const data = await res.json();
+      document.getElementById('proxyCount').textContent = `پروکسی: ${data.total}`;
+      if (data.lastRefresh) {
+        document.getElementById('proxyLast').textContent = `آخرین به‌روزرسانی: ${new Date(data.lastRefresh).toLocaleTimeString('fa-IR')}`;
+      }
+    }
+
+    function updateMonitoring(data) {
+      document.getElementById('statStarted').textContent = data.global.totalSessionsStarted;
+      document.getElementById('statSuccess').textContent = data.global.totalSuccess;
+      document.getElementById('statFail').textContent = data.global.totalFail;
+      document.getElementById('statActive').textContent = data.activeCount;
+      document.getElementById('activeTests').textContent = `تست فعال: ${data.activeCount}`;
+
+      const el = document.getElementById('testsList');
+      if (!data.tests.length) {
+        el.innerHTML = '<p class="text-white/30 text-sm text-center py-10">هیچ تستی در حال اجرا نیست</p>';
+        return;
+      }
+
+      el.innerHTML = data.tests.map(t => {
+        const progress = t.stats.started ? Math.round((t.stats.finished / t.stats.started) * 100) : 0;
+        const statusColor = t.status === 'running' ? 'bg-emerald-500' : t.status === 'stopped' ? 'bg-amber-500' : 'bg-white/30';
+        return `
+          <div class="bg-dark-900/60 rounded-xl p-4 border border-white/5">
+            <div class="flex items-center justify-between mb-2">
+              <div>
+                <h3 class="font-medium">${escapeHtml(t.targetName)}</h3>
+                <p class="text-xs text-white/40 truncate max-w-md">${escapeHtml(t.url)}</p>
+              </div>
+              <div class="flex items-center gap-2">
+                <span class="badge ${t.status === 'running' ? 'bg-emerald-500/20 text-emerald-400' : 'bg-white/10 text-white/50'}">${t.status === 'running' ? 'در حال اجرا' : t.status === 'stopped' ? 'متوقف' : 'پایان'}</span>
+                ${t.status === 'running' ? `<button onclick="stopTest('${t.id}')" class="btn btn-danger text-xs py-1">توقف</button>` : ''}
+              </div>
+            </div>
+            <div class="grid grid-cols-4 gap-2 text-center text-sm mt-3">
+              <div><p class="text-white/40 text-xs">همزمان</p><p class="font-semibold">${t.concurrent}</p></div>
+              <div><p class="text-white/40 text-xs">فعال</p><p class="font-semibold text-primary-400">${t.activeWorkers}</p></div>
+              <div><p class="text-white/40 text-xs">موفق</p><p class="font-semibold text-emerald-400">${t.stats.success}</p></div>
+              <div><p class="text-white/40 text-xs">ناموفق</p><p class="font-semibold text-rose-400">${t.stats.fail}</p></div>
+            </div>
+            <div class="mt-3 h-1.5 bg-white/5 rounded-full overflow-hidden">
+              <div class="h-full ${statusColor} transition-all duration-500" style="width:${progress}%"></div>
+            </div>
+            <p class="text-xs text-white/30 mt-1.5 text-left" dir="ltr">${t.stats.finished} / ${t.stats.started} finished</p>
+          </div>
+        `;
+      }).join('');
+    }
+
+    function escapeHtml(str) {
+      return String(str).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+    }
+
+    // Init
+    loadTargets();
+    loadProxyStats();
+    fetch('/api/tests/status').then(r => r.json()).then(updateMonitoring);
+  </script>
+</body>
+</html>
