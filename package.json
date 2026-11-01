@@ -1,0 +1,22 @@
+{
+  "name": "viewzy",
+  "version": "1.0.0",
+  "description": "Viewzy - Modern live stream load testing panel with proxy rotation",
+  "main": "src/server.js",
+  "scripts": {
+    "start": "node src/server.js",
+    "dev": "node --watch src/server.js",
+    "install-browsers": "npx playwright install chromium"
+  },
+  "dependencies": {
+    "express": "^4.21.0",
+    "cors": "^2.8.5",
+    "uuid": "^10.0.0",
+    "playwright": "^1.48.0",
+    "axios": "^1.7.7",
+    "socket.io": "^4.8.0"
+  },
+  "engines": {
+    "node": ">=18"
+  }
+}
