@@ -10,7 +10,7 @@
 
 
 ```bash
-git clone https://github.com/YOUR_USERNAME/viewzy.git
+git clone https://github.com/SeyedCode/viewzy.git
 cd viewzy
 bash install.sh
 npm start
